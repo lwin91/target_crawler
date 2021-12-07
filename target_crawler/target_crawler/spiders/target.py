@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import scrapy
-
+import json
 
 class TargetSpider(scrapy.Spider):
     name = 'target'
@@ -22,5 +22,22 @@ class TargetSpider(scrapy.Spider):
         item['description'] = response.xpath('//h3[text()="Description"]/following-sibling::div/text()').extract_first()
         item['specs'] = response.xpath('//h3[text()="Specifications"]/following-sibling::div/div/text()').extract_first() 
         item['ingredients'] = response.xpath('//script/text()').re('"ingredients":"[\w\ \,\-\)\(\:\.\/\\\]+')[0]
+        
+        api_key = response.xpath('//script/text()').re('"x-api-key","value":"[\w]+')[0].split('"')[-1]
+        pricing_store_id = response.xpath('//script/text()').re('"pricing_store_id":"[\d]+')[0].split('"')[-1]
+        url = 'https://redsky.target.com/redsky_aggregations/v1/web/pdp_client_v1?key={}&tcin={}&pricing_store_id={}'.format(api_key, response.xpath('//div[b/text()="TCIN"]/text()').extract()[-1], pricing_store_id)
+        request = scrapy.Request(url, callback=self.parse_first)
+        request.meta['item'] = item 
+        yield request
+    
+    def parse_first(self, response):
+        item = response.meta['item']
+        j = json.loads(response.text)
+        item['price'] = j['data']['product']['price']['current_retail']
+        currency = j['data']['product']['price']['formatted_current_price']
+        if '$' in currency:
+            item['currency'] = 'USD'
+        else:
+            item['currency'] = currency
         yield item
 
